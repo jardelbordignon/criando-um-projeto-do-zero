@@ -1,4 +1,5 @@
 import { Fragment } from 'react';
+import { useRouter } from 'next/router';
 import { FiCalendar, FiUser, FiClock } from 'react-icons/fi';
 import { GetStaticPaths, GetStaticProps } from 'next';
 import PrismicDOM from 'prismic-dom';
@@ -26,14 +27,32 @@ interface Post {
       }[];
     }[];
   };
-  timeToRead: string;
 }
 
 interface PostProps {
   post: Post;
+  timeToRead: string;
 }
 
-export default function Post({ post }: PostProps): JSX.Element {
+export default function Post({ post, timeToRead }: PostProps): JSX.Element {
+  const router = useRouter();
+
+  const reducer = (sumContent, thisContent) => {
+    const headingWords = thisContent.heading?.split(/\s/g).length || 0;
+    const bodyWords = thisContent.body.reduce((sumBody, thisBody) => {
+      const textWords = thisBody.text.split(/\s/g).length;
+
+      return sumBody + textWords;
+    }, 0);
+    return sumContent + headingWords + bodyWords;
+  };
+
+  const wordCount = post.data.content.reduce(reducer, 0);
+
+  if (router.isFallback) {
+    return <div>Carregando...</div>;
+  }
+
   return (
     <>
       <Header />
@@ -49,7 +68,7 @@ export default function Post({ post }: PostProps): JSX.Element {
           <div className={styles.postInfo}>
             <time>
               <FiCalendar />
-              {post.first_publication_date}
+              {formattedDate(post.first_publication_date)}
             </time>
             <span>
               <FiUser />
@@ -57,7 +76,7 @@ export default function Post({ post }: PostProps): JSX.Element {
             </span>
             <span>
               <FiClock />
-              {post.timeToRead}
+              {Math.ceil(wordCount / 200)} min
             </span>
           </div>
 
@@ -112,53 +131,17 @@ export const getStaticProps: GetStaticProps = async ({ params }) => {
   const prismic = getPrismicClient();
   const postResponse = await prismic.getByUID('post', String(slug), {});
 
-  // console.log(JSON.stringify(response, null, 2));
-
-  // const content = PrismicDOM.RichText.asText(response.data.content);
-  // console.log(JSON.stringify(response.data.content, null, 2));
-  // let wordsCount = 0;
-  // response.data.content.forEach(thisContent => {
-  //   const wordsSum =
-  //     thisContent.heading.split(/\s/g).length +
-  //     thisContent.body.reduce((acc, currentBody) => {
-  //       console.log(currentBody.text.split(/\s/g).length);
-  //       acc += currentBody.text.split(/\s/g).length;
-  //       return acc;
-  //     });
-
-  //   wordsCount += wordsSum;
-  // });
-
-  // console.log('wordsCount', wordsCount);
-
-  // const first_publication_date = new Date(
-  //   postResponse.first_publication_date
-  // ).toLocaleDateString('pt-BR', {
-  //   day: '2-digit',
-  //   month: 'long',
-  //   year: 'numeric',
-  // });
-
-  // {
-  //   first_publication_date: string | null;
-  //   data: {
-  //     title: string;
-  //     banner: {
-  //       url: string;
-  //     };
-  //     author: string;
-  //     content: {
-  //       heading: string;
-  //       body: {
-  //         text: string;
-  //       }[];
-  //     }[];
-  //   };
-  // }
+  if (!postResponse) {
+    return {
+      redirect: {
+        destination: '/',
+        permanent: false,
+      },
+    };
+  }
 
   const post = {
-    timeToRead: '8 min',
-    first_publication_date: formattedDate(postResponse.first_publication_date),
+    first_publication_date: postResponse.first_publication_date,
     uid: postResponse.uid,
     data: {
       title: postResponse.data.title,
@@ -170,7 +153,7 @@ export const getStaticProps: GetStaticProps = async ({ params }) => {
   };
 
   return {
-    props: { post },
+    props: { post, timeToRead: '8 min' },
     revalidate: 60 * 60 * 12, // 12 horas
   };
 };
